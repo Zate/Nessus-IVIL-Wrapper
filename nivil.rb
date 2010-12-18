@@ -52,10 +52,7 @@ optparse = OptionParser.new do |opts|
     opts.on('--show-reports', 'Shows Server Reports') do
         options[:showrpt] = true
     end
-    opts.on('--ivil', 'Output is in IVIL format') do
-        options[:ivil] = true
-    end
-    opts.on('--get-report RPTID', 'Download Report and Export to IVIL') do |rpt|
+    opts.on('-g', '--get-report RPTID', 'Download Report and Export to IVIL/Nessus V2') do |rpt|
         options[:rptid] = rpt
     end
     case ARGV.length
@@ -67,6 +64,14 @@ optparse = OptionParser.new do |opts|
 end
 optparse.parse!
 
+
+if !(options[:username] and options[:out] and options[:passwd] and options[:server] and options[:policy] and (options[:target] or options[:file]))
+    puts
+    puts("**[FAIL]** Missing Arguments")
+    puts
+    puts @fopts
+    exit
+end
 # Our Connection Class
 
 class NessusConnection
@@ -98,41 +103,41 @@ class NessusConnection
 end
 
 class NessusXMLStreamParser
-	
+    
     attr_accessor :on_found_host
 
     def initialize(&block)
-            reset_state
-            on_found_host = block if block
+        reset_state
+        on_found_host = block if block
     end
 
     def reset_state
-            @host = {'hname' => nil, 'addr' => nil, 'mac' => nil, 'os' => nil, 'ports' => [
-                    'port' => {'port' => nil, 'svc_name'  => nil, 'proto' => nil, 'severity' => nil,
-                    'nasl' => nil, 'description' => nil, 'cve' => [], 'bid' => [], 'xref' => [], 'msf' => nil } ] }
-            @state = :generic_state
+        @host = {'hname' => nil, 'addr' => nil, 'mac' => nil, 'os' => nil, 'ports' => [
+            'port' => {'port' => nil, 'svc_name'  => nil, 'proto' => nil, 'severity' => nil,
+            'nasl' => nil, 'description' => nil, 'cve' => [], 'bid' => [], 'xref' => [], 'msf' => nil } ] }
+        @state = :generic_state
     end
 
     def tag_start(name, attributes)
         case name
         when "tag"
             if attributes['name'] == "mac-address"
-                    @state = :is_mac
+                @state = :is_mac
             end
             if attributes['name'] == "host-fqdn"
-                    @state = :is_fqdn
+                @state = :is_fqdn
             end
             if attributes['name'] == "ip-addr"
-                    @state = :is_ip
+                @state = :is_ip
             end
             if attributes['name'] == "host-ip"
-                    @state = :is_ip
+                @state = :is_ip
             end
             if attributes['name'] == "operating-system"
-                    @state = :is_os
+                @state = :is_os
             end
         when "ReportHost"
-                @host['hname'] = attributes['name']
+            @host['hname'] = attributes['name']
         when "ReportItem"
             @cve = Array.new
             @bid = Array.new
@@ -144,41 +149,40 @@ class NessusXMLStreamParser
             @x['svc_name'] = attributes['svc_name']
             @x['severity'] = attributes['severity']
         when "description"
-                @state = :is_desc
+            @state = :is_desc
         when "cve"
-                @state = :is_cve
+            @state = :is_cve
         when "bid"
-                @state = :is_bid
+            @state = :is_bid
         when "xref"
-                @state = :is_xref
+            @state = :is_xref
         when "solution"
-                @state = :is_solution
+            @state = :is_solution
         when "metasploit_name"
-                @state = :msf
+            @state = :msf
         end
     end
     
     def text(str)
         case @state
         when :is_fqdn
-                @host['hname'] = str
+            @host['hname'] = str
         when :is_ip
-                @host['addr'] = str
+            @host['addr'] = str
         when :is_os
-                @host['os'] = str
+            @host['os'] = str
         when :is_mac
-                @host['mac'] = str
+            @host['mac'] = str
         when :is_desc
-                @x['description'] = str
+            @x['description'] = str
         when :is_cve
-                @cve.push str
+            @cve.push str
         when :is_bid
-                @bid.push str
+            @bid.push str
         when :is_xref
-                @xref.push str
+            @xref.push str
         when :msf
-                #p str
-                @x['msf'] = str
+            @x['msf'] = str
         end
     end
 
@@ -242,31 +246,32 @@ end # end of parser class
 
 def parse_ivil(content)
     parser = NessusXMLStreamParser.new
-    ivil = Array.new
-    ivil << "<IVIL version=0.2>"
-    ivil << "<addressee>"
-    ivil << "    <program>Seccubus</program>"
-    ivil << "    <programSpecificData>"
-    ivil << "        <ScanID>1"
-    ivil << "        </ScanID>"
-    ivil << "    </programSpecificData>"
-    ivil << "</addressee>"
-    ivil << "<sender>"
-    ivil << "    <scanner_type>Nessus</scanner_type>"
-    ivil << "    <version>4.2</version>"
-    ivil << "    <timestamp>YYYYMMDDHHMMSS</timestamp>"
-    ivil << "</sender>"
-    ivil << "<hosts> "
+    ivil = Document.new
+    ivil << XMLDecl.new
+    ivil.add_element( "ivil", {"version" => "0.2"})
+    addressee = ivil.root.add_element("addressee")
+    program = addressee.add_element("program")
+    program.text = "Seccubus"
+    programspecific = addressee.add_element("programSpecificData")
+    scanid = programspecific.add_element("ScanID")
+    scanid.text = "1"
+    sender = ivil.root.add_element("sender")
+    scannertype = sender.add_element("scanner_type")
+    scannertype.text = "Nessus"
+    scanner_version = sender.add_element("version")
+    scanner_version.text = "4.2"
+    timestamp = sender.add_element("timestamp")
+    time = Time.new
+    timestamp.text = time.strftime("%Y%m%d%H%M%S")
+    hosts = ivil.root.add_element("hosts")
+    
+    #ivil << "<hosts> "
     parser.on_found_host = Proc.new { |host|
-        ivil << "   <host>"
-        
-        
+        hostx = hosts.add_element("host")
         addr = host['addr'] || host['hname']
         addr.gsub!(/[\n\r]/," or ") if addr
-        ivil << "       <ip>#{addr}</ip>"
-        
-        
-        
+        ipx = hostx.add_element("ip")
+        ipx.text = addr
         os = host['os']
         os.gsub!(/[\n\r]/," or ") if os
         
@@ -275,28 +280,42 @@ def parse_ivil(content)
         
         mac = host['mac']
         mac.gsub!(/[\n\r]/," or ") if mac
-        ivil << "           <findings>"
+        findings = hostx.add_element("findings")
+        #ivil << "           <findings>"
         host['ports'].each do |item|
-            ivil << "                   <finding>"
+            finding = findings.add_element("finding")
+            #ivil << "                   <finding>"
             
             exp = []
             msf = nil
             nasl = item['nasl'].to_s
             port = item['port'].to_s
-            ivil << "                       <port>#{port}</port>"
+            portx = finding.add_element("port")
+            portx.text = port
+            #ivil << "                       <port>#{port}</port>"
             proto = item['proto'] || "tcp"
             name = item['svc_name']
-            ivil << "                       <id>#{name}</id>"
+            id = finding.add_element("id")
+            id.text = name
+            #ivil << "                       <id>#{name}</id>"
             severity = item['severity']
-            ivil << "                       <severity>#{severity}</severity>"
+            sevx = finding.add_element("severity")
+            sevx.text = severity
+            #ivil << "                       <severity>#{severity}</severity>"
             description = item['description']
-            ivil << "                       <finding_txt>#{description}</finding_txt>"
-            ivil << "                       <references>"
+            finding_txt = finding.add_element("finding_txt")
+            finding_txt.text = description
+            #ivil << "                       <finding_txt>#{description}</finding_txt>"
+            #ivil << "                       <references>"
+            refs = finding.add_element("references")
+            
             cve = item['cve']
             
             if cve
                 cve.each do |stuff|
-                    ivil << "                       <cve>#{stuff}</cve>"
+                    cvex = refs.add_element("cve")
+                    cvex.text = stuff
+                    #ivil << "                       <cve>#{stuff}</cve>"
                 end
             end
             
@@ -304,39 +323,47 @@ def parse_ivil(content)
             bid = item['bid']
             if bid
                 bid.each do |stuff|
-                    ivil << "                       <bid>#{stuff}</bid>"
+                    bidx = refs.add_element("bid")
+                    bidx.text = stuff
+                    #ivil << "                       <bid>#{stuff}</bid>"
                 end
             end
             
             xref = item['xref']
             if xref
                 xref.each do |stuff|
-                    ivil << "                       <xref>#{stuff}</xref>"
+                    xrefx = refs.add_element("xref")
+                    xrefx.text = stuff
+                    #ivil << "                       <xref>#{stuff}</xref>"
                 end
             end
             
             msf = item['msf']
             if msf
-                msf.each do |stuff|
-                    ivil << "                       <msf>#{stuff}</msf>"
-                end
+                msfx = refs.add_element("msf")
+                msfx.text = msf
+                    #ivil << "                       <msf>#{msf}</msf>"
+                
             end
             
-            ivil << "                       </references>"
-            ivil << "                   </finding>"
+            #ivil << "                       </references>"
+            #ivil << "                   </finding>"
             
            
             #print("#{addr} | #{os} | #{port} | #{nss} | Sev #{severity} \n")
             
             
         end
-        ivil << "           </findings>"
-        ivil << "   </host>"
+        #ivil << "           </findings>"
+        #ivil << "   </host>"
     }
     REXML::Document.parse_stream(content, parser)
-    ivil << "</hosts> "
-    ivil << "</IVIL>"
-    puts(ivil)
+    #ivil << "</hosts> "
+    #ivil << "</IVIL>"
+    out = ""
+    ivil.write(out, 2)
+    
+    return out
     
 end
 
@@ -400,11 +427,15 @@ def get_report(options)
     post_data = { "token" => @token, "report" => options[:rptid]  }
     stuff = @n.connect(uri, post_data)
     if options[:out]
-        File.open("#{options[:out]}", 'w') {|f| f.write(stuff) }
-        puts("#{options[:out]} written.")
+        File.open("#{options[:out]}.nessus", 'w') {|f| f.write(stuff) }
+        puts("#{options[:out]}.nessus written.")
+        ivil = parse_ivil(stuff)
+        File.open("#{options[:out]}.ivil", 'w') {|f| f.write(ivil) }
+        puts("#{options[:out]}.ivil written.")
         exit
+        
     end
-    parse_ivil(stuff)
+    
 end
 
 
@@ -426,14 +457,6 @@ end
 if options[:rptid]
     login(options)
     get_report(options)
-    exit
-end
-
-if !(options[:username] and options[:out] and options[:passwd] and options[:server] and options[:policy] and (options[:target] or options[:file]))
-    puts
-    puts("**[FAIL]** Missing Arguments")
-    puts
-    puts @fopts
     exit
 end
 
@@ -476,8 +499,11 @@ uuid=docxml.root.elements['contents'].elements['scan'].elements['uuid'].text
 
 #loop checking scan, print %done if -v
 done = false
-print "Running Scan"
-while done == false
+puts("Running Scan")
+print("[*]")
+count = 0
+until count == 5
+    
     uri = "scan/list"
     post_data = { "token" => @token }
     stuff = @n.connect(uri, post_data)
@@ -488,18 +514,33 @@ while done == false
                 now = scan.elements['completion_current'].text
                 total = scan.elements['completion_total'].text
                 percent = (now.to_f / total.to_f) * 100
-                print "\r\e"
-                print(" Scan is #{percent.round(2)}% done.")
-                sleep 1
+                break if now.to_f == total.to_f
+                case count
+                    when 0
+                        print("\r[|] #{percent.round(2)}% #{now}/#{total}")
+                        count += 1
+                    when 1
+                        print("\r[/] #{percent.round(2)}% #{now}/#{total}")
+                        count += 1
+                    when 2
+                        print("\r[-] #{percent.round(2)}% #{now}/#{total}")
+                        count += 1
+                    when 3
+                        print("\r[\\] #{percent.round(2)}% #{now}/#{total}")
+                        count =0
+                end
+                #print(" Scan is #{now} / #{total}.")
+                #sleep 1
+                
             else
-                puts("Scan complete.")
-                done = true
-                exit
+                break
             end
+        else
+            break
         end
     }
 end
-
+print("\r[*] Scan complete.")
 
 # scan done, get report
 
