@@ -65,7 +65,7 @@ end
 optparse.parse!
 
 
-if !(options[:username] and options[:out] and options[:passwd] and options[:server] and options[:policy] and (options[:target] or options[:file]))
+if !(options[:username] and options[:passwd] and options[:server])
     puts
     puts("**[FAIL]** Missing Arguments")
     puts
