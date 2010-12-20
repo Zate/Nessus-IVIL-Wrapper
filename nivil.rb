@@ -142,6 +142,7 @@ class NessusXMLStreamParser
             @cve = Array.new
             @bid = Array.new
             @xref = Array.new
+            @see_also = Array.new
             @x = Hash.new
             @x['nasl'] = attributes['pluginID']
             @x['port'] = attributes['port']
@@ -150,6 +151,12 @@ class NessusXMLStreamParser
             @x['severity'] = attributes['severity']
         when "description"
             @state = :is_desc
+        when "synopsis"
+            @state = :is_synop
+        when "plugin_output"
+            @state = :is_plugin_ouput
+        when "see_also"
+            @state = :see_also
         when "cve"
             @state = :is_cve
         when "bid"
@@ -175,6 +182,12 @@ class NessusXMLStreamParser
             @host['mac'] = str
         when :is_desc
             @x['description'] = str
+        when :is_synop
+            @x['synopsis'] = str
+        when :is_plugin_output
+            @x['plugin_ouput'] = str
+        when :see_also
+            @see_also.push str
         when :is_cve
             @cve.push str
         when :is_bid
@@ -249,12 +262,13 @@ def parse_ivil(content)
     ivil = Document.new
     ivil << XMLDecl.new
     ivil.add_element( "ivil", {"version" => "0.2"})
-    addressee = ivil.root.add_element("addressee")
-    program = addressee.add_element("program")
-    program.text = "Seccubus"
-    programspecific = addressee.add_element("programSpecificData")
-    scanid = programspecific.add_element("ScanID")
-    scanid.text = "1"
+    #Could add function to set this.
+    #addressee = ivil.root.add_element("addressee")
+    #program = addressee.add_element("program")
+    #program.text = "Seccubus"
+    #programspecific = addressee.add_element("programSpecificData")
+    #scanid = programspecific.add_element("ScanID")
+    #scanid.text = "1"
     sender = ivil.root.add_element("sender")
     scannertype = sender.add_element("scanner_type")
     scannertype.text = "Nessus"
@@ -288,23 +302,44 @@ def parse_ivil(content)
             
             exp = []
             msf = nil
-            nasl = item['nasl'].to_s
+            nasl = item['nasl']
+            #port = number/protocol
+            #if pluginid = 0 then make it a portscanner
             port = item['port'].to_s
-            portx = finding.add_element("port")
-            portx.text = port
-            #ivil << "                       <port>#{port}</port>"
             proto = item['proto'] || "tcp"
+            portx = finding.add_element("port")
+            portx.text = "#{port}/#{proto}"
+            #ivil << "                       <port>#{port}</port>"
+            
             name = item['svc_name']
+            #id will be plugin ID
             id = finding.add_element("id")
-            id.text = name
+            id.text = nasl
             #ivil << "                       <id>#{name}</id>"
             severity = item['severity']
             sevx = finding.add_element("severity")
             sevx.text = severity
             #ivil << "                       <severity>#{severity}</severity>"
             description = item['description']
+            synopsis = item['synopsis']
+            plugin_ouput = item['plugin_output']
             finding_txt = finding.add_element("finding_txt")
-            finding_txt.text = description
+            if nasl.to_i == 0
+                if port.to_i == 0
+                    finding_txt.text = "Host Is Alive"
+                else
+                    finding_txt.text = "Open Port Found"
+                end
+            else
+                finding_txt.text = "Description:\n
+                #{description}\n\n
+                
+                Synopsis:\n
+                #{synopsis}\n\n
+                
+                Plugin Ouput:\n
+                #{plugin_output if plugin_ouput}"
+            end
             #ivil << "                       <finding_txt>#{description}</finding_txt>"
             #ivil << "                       <references>"
             refs = finding.add_element("references")
