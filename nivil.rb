@@ -5,6 +5,7 @@ require 'optparse'
 require 'uri'
 require 'net/https'
 require 'rexml/document'
+require 'builder'
 
 include REXML
 
@@ -37,9 +38,6 @@ optparse = OptionParser.new do |opts|
       puts opts
       exit
     end
-    opts.on('-v', '--verbose', 'Show Scan Progress to STD OUT') do
-        options[:verbose] = true
-    end
     opts.on('-f', '--file INFILE', 'File of hosts to scan') do |file|
         options[:file] = file
     end
@@ -55,6 +53,9 @@ optparse = OptionParser.new do |opts|
     opts.on('-g', '--get-report RPTID', 'Download Report and Export to IVIL/Nessus V2') do |rpt|
         options[:rptid] = rpt
     end
+    opts.on('-c', '--convert FILE', 'Local Nessus V2 file to convert') do |file|
+        options[:cfile] = file
+    end
     case ARGV.length
     when 0
       puts opts
@@ -64,14 +65,16 @@ optparse = OptionParser.new do |opts|
 end
 optparse.parse!
 
-
-if !(options[:username] and options[:passwd] and options[:server])
-    puts
-    puts("**[FAIL]** Missing Arguments")
-    puts
-    puts @fopts
-    exit
+if !options[:cfile]
+    if !(options[:username] and options[:passwd] and options[:server])
+        puts
+        puts("**[FAIL]** Missing Arguments")
+        puts
+        puts @fopts
+        exit
+    end
 end
+
 # Our Connection Class
 
 class NessusConnection
@@ -279,7 +282,6 @@ def parse_ivil(content)
     timestamp.text = time.strftime("%Y%m%d%H%M%S")
     hosts = ivil.root.add_element("hosts")
     
-    #ivil << "<hosts> "
     parser.on_found_host = Proc.new { |host|
         hostx = hosts.add_element("host")
         addr = host['addr'] || host['hname']
@@ -295,10 +297,8 @@ def parse_ivil(content)
         mac = host['mac']
         mac.gsub!(/[\n\r]/," or ") if mac
         findings = hostx.add_element("findings")
-        #ivil << "           <findings>"
         host['ports'].each do |item|
             finding = findings.add_element("finding")
-            #ivil << "                   <finding>"
             
             exp = []
             msf = nil
@@ -309,17 +309,17 @@ def parse_ivil(content)
             proto = item['proto'] || "tcp"
             portx = finding.add_element("port")
             portx.text = "#{port}/#{proto}"
-            #ivil << "                       <port>#{port}</port>"
+            
             
             name = item['svc_name']
             #id will be plugin ID
             id = finding.add_element("id")
             id.text = nasl
-            #ivil << "                       <id>#{name}</id>"
+            
             severity = item['severity']
             sevx = finding.add_element("severity")
             sevx.text = severity
-            #ivil << "                       <severity>#{severity}</severity>"
+            
             description = item['description']
             synopsis = item['synopsis']
             plugin_ouput = item['plugin_output']
@@ -340,8 +340,7 @@ def parse_ivil(content)
                 Plugin Ouput:\n
                 #{plugin_output if plugin_ouput}"
             end
-            #ivil << "                       <finding_txt>#{description}</finding_txt>"
-            #ivil << "                       <references>"
+            
             refs = finding.add_element("references")
             
             cve = item['cve']
@@ -350,17 +349,14 @@ def parse_ivil(content)
                 cve.each do |stuff|
                     cvex = refs.add_element("cve")
                     cvex.text = stuff
-                    #ivil << "                       <cve>#{stuff}</cve>"
                 end
             end
-            
             
             bid = item['bid']
             if bid
                 bid.each do |stuff|
                     bidx = refs.add_element("bid")
                     bidx.text = stuff
-                    #ivil << "                       <bid>#{stuff}</bid>"
                 end
             end
             
@@ -369,7 +365,6 @@ def parse_ivil(content)
                 xref.each do |stuff|
                     xrefx = refs.add_element("xref")
                     xrefx.text = stuff
-                    #ivil << "                       <xref>#{stuff}</xref>"
                 end
             end
             
@@ -377,27 +372,12 @@ def parse_ivil(content)
             if msf
                 msfx = refs.add_element("msf")
                 msfx.text = msf
-                    #ivil << "                       <msf>#{msf}</msf>"
-                
-            end
-            
-            #ivil << "                       </references>"
-            #ivil << "                   </finding>"
-            
-           
-            #print("#{addr} | #{os} | #{port} | #{nss} | Sev #{severity} \n")
-            
-            
+            end 
         end
-        #ivil << "           </findings>"
-        #ivil << "   </host>"
     }
     REXML::Document.parse_stream(content, parser)
-    #ivil << "</hosts> "
-    #ivil << "</IVIL>"
     out = ""
     ivil.write(out, 2)
-    
     return out
     
 end
@@ -451,16 +431,19 @@ def show_reports(options)
         reports.push(entry)
     }
     puts("ID\tName")
+    reports.sort! { |a,b| b['timestamp'] <=> a['timestamp'] }
     reports.each do |report|
-        puts("#{report['id']}\t#{report['name']}")
+        t = Time.at(report['timestamp'].to_i)
+        puts("#{report['id']}\t#{report['name']}\t\t#{t.strftime("%H:%M %b %d %Y")}")
     end 
 end
 
 def get_report(options)
-    file = nil
+    stuff = nil
     uri = "file/report/download"
     post_data = { "token" => @token, "report" => options[:rptid]  }
     stuff = @n.connect(uri, post_data)
+    
     if options[:out]
         File.open("#{options[:out]}.nessus", 'w') {|f| f.write(stuff) }
         puts("#{options[:out]}.nessus written.")
@@ -473,9 +456,27 @@ def get_report(options)
     
 end
 
+if options[:cfile]
+    if !options[:out]
+        puts("Missing output filename (-o)")
+        exit
+    end
+    stuff = ''
+    puts("importing #{options[:cfile]}")
+    fc = File.open("#{options[:cfile]}", 'r')
+    fc.each_line do |line|
+        stuff += line
+    end
+    ivil = parse_ivil(stuff)
+    File.open("#{options[:out]}.ivil", 'w') {|f| f.write(ivil) }
+    puts("#{options[:out]}.ivil written.")
+    exit
+end
 
 @n = NessusConnection.new(options[:username], options[:passwd], options[:server])
 #ok lets check we have everything.
+
+
 
 if options[:showpol]
     login(options)
