@@ -50,12 +50,15 @@ optparse = OptionParser.new do |opts|
     opts.on('--show-reports', 'Shows Server Reports') do
         options[:showrpt] = true
     end
-    opts.on('-g', '--get-report RPTID', 'Download Report and Export to IVIL/Nessus V2') do |rpt|
+    opts.on('-g', '--get-report RPTID', 'Download Report and Export to IVIL/Nessus V2.  If no output is given (-o) then it will just return status of that report.') do |rpt|
         options[:rptid] = rpt
     end
     opts.on('-c', '--convert FILE', 'Local Nessus V2 file to convert') do |file|
         options[:cfile] = file
     end
+    #opts.on('-r', '--report RPTID', 'Report ID to get status of.') do |rptid|
+    #    options[:cfile] = file
+    #end
     case ARGV.length
     when 0
       puts opts
@@ -453,7 +456,49 @@ def get_report(options)
         exit
         
     end
-    
+end
+
+def rpt_status(options)
+    # Return report status
+    #uri = "report/list"
+    #post_data = { "token" => @token }
+    #stuff = @n.connect(uri, post_data)
+    #docxml = REXML::Document.new(stuff)
+    #reports=Array.new
+    #docxml.elements.each('/reply/contents/reports/report') {|report|
+    #    entry=Hash.new
+    #    entry['id']=report.elements['name'].text if report.elements['name']
+    #    entry['name']=report.elements['readableName'].text if report.elements['readableName']
+    #    entry['status']=report.elements['status'].text if report.elements['status']
+    #    entry['timestamp']=report.elements['timestamp'].text if report.elements['timestamp']
+    #    reports.push(entry)
+    #}
+    ##puts("ID\tName")
+    ##reports.sort! { |a,b| b['timestamp'] <=> a['timestamp'] }
+    #reports.each do |report|
+    #    #t = Time.at(report['timestamp'].to_i)
+    #    if report['id'] == options[:rptid]
+    #        #puts("#{report['id']}|#{report['name']}|#{report['timestamp']}|#{report['status']}")
+    #        puts("#{report['status']}")
+    #    end
+    #end
+    #exit
+    uri = "scan/list"
+    post_data = { "token" => @token }
+    stuff = @n.connect(uri, post_data)
+    docxml = REXML::Document.new(stuff)
+    puts("checking for #{options[:rptid]}")
+    docxml.elements.each('/reply/contents/scans/scanList/scan') {|scan|
+        
+        if scan.elements['uuid'].text == options[:rptid]
+            if scan.elements['status'].text == "running"
+                now = scan.elements['completion_current'].text
+                total = scan.elements['completion_total'].text
+                #percent = (now.to_f / total.to_f) * 100
+                puts("#{scan.elements['status'].text}|#{now}|#{total}")
+            end
+        end
+    }
 end
 
 if options[:cfile]
@@ -492,6 +537,10 @@ end
 
 if options[:rptid]
     login(options)
+    if !options[:out]
+        rpt_status(options)
+        exit
+    end
     get_report(options)
     exit
 end
