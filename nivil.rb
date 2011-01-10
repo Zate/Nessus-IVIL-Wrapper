@@ -459,34 +459,10 @@ end
 
 def rpt_status(options)
     # Return report status
-    #uri = "report/list"
-    #post_data = { "token" => @token }
-    #stuff = @n.connect(uri, post_data)
-    #docxml = REXML::Document.new(stuff)
-    #reports=Array.new
-    #docxml.elements.each('/reply/contents/reports/report') {|report|
-    #    entry=Hash.new
-    #    entry['id']=report.elements['name'].text if report.elements['name']
-    #    entry['name']=report.elements['readableName'].text if report.elements['readableName']
-    #    entry['status']=report.elements['status'].text if report.elements['status']
-    #    entry['timestamp']=report.elements['timestamp'].text if report.elements['timestamp']
-    #    reports.push(entry)
-    #}
-    ##puts("ID\tName")
-    ##reports.sort! { |a,b| b['timestamp'] <=> a['timestamp'] }
-    #reports.each do |report|
-    #    #t = Time.at(report['timestamp'].to_i)
-    #    if report['id'] == options[:rptid]
-    #        #puts("#{report['id']}|#{report['name']}|#{report['timestamp']}|#{report['status']}")
-    #        puts("#{report['status']}")
-    #    end
-    #end
-    #exit
     uri = "scan/list"
     post_data = { "token" => @token }
     stuff = @n.connect(uri, post_data)
     docxml = REXML::Document.new(stuff)
-    puts("checking for #{options[:rptid]}")
     docxml.elements.each('/reply/contents/scans/scanList/scan') {|scan|
         
         if scan.elements['uuid'].text == options[:rptid]
@@ -564,7 +540,6 @@ docxml.elements.each('/reply/contents/policies/policies/policy') { |policy|
 match = nil
 policies.each {|p|
     if p['id'].to_i == pid.to_i
-        #puts("#{pid} - #{p['name']} is valid")
         match = pid
         next
     end
