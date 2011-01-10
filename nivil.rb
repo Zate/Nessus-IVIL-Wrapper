@@ -5,7 +5,6 @@ require 'optparse'
 require 'uri'
 require 'net/https'
 require 'rexml/document'
-require 'builder'
 
 include REXML
 
@@ -582,56 +581,8 @@ stuff = @n.connect(uri, post_data)
 docxml = REXML::Document.new(stuff)
 uuid=docxml.root.elements['contents'].elements['scan'].elements['uuid'].text
 
-#loop checking scan, print %done if -v
-done = false
-puts("Running Scan")
-print("[*]")
-count = 0
-until count == 5
-    
-    uri = "scan/list"
-    post_data = { "token" => @token }
-    stuff = @n.connect(uri, post_data)
-    docxml = REXML::Document.new(stuff)
-    docxml.elements.each('/reply/contents/scans/scanList/scan') {|scan|
-        if scan.elements['uuid'].text == uuid
-            if scan.elements['status'].text == "running"
-                now = scan.elements['completion_current'].text
-                total = scan.elements['completion_total'].text
-                percent = (now.to_f / total.to_f) * 100
-                break if now.to_f == total.to_f
-                case count
-                    when 0
-                        print("\r[|] #{percent.round(2)}% #{now}/#{total}")
-                        count += 1
-                    when 1
-                        print("\r[/] #{percent.round(2)}% #{now}/#{total}")
-                        count += 1
-                    when 2
-                        print("\r[-] #{percent.round(2)}% #{now}/#{total}")
-                        count += 1
-                    when 3
-                        print("\r[\\] #{percent.round(2)}% #{now}/#{total}")
-                        count =0
-                end
-                #print(" Scan is #{now} / #{total}.")
-                #sleep 1
-                
-            else
-                break
-            end
-        else
-            break
-        end
-    }
-end
-print("\r[*] Scan complete.")
+puts("#{uuid}")
 
-# scan done, get report
-
-#parse report into ivil
-
-#output
 
 
 
