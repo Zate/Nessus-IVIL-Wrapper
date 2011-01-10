@@ -5,6 +5,8 @@ require 'optparse'
 require 'uri'
 require 'net/https'
 require 'rexml/document'
+require 'rexml/formatters/default'
+
 
 include REXML
 
@@ -265,6 +267,7 @@ end # end of parser class
 def parse_ivil(content)
     parser = NessusXMLStreamParser.new
     ivil = Document.new
+    pretty = Formatters::Default.new
     ivil << XMLDecl.new
     ivil.add_element( "ivil", {"version" => "0.2"})
     #Could add function to set this.
@@ -333,14 +336,15 @@ def parse_ivil(content)
                     finding_txt.text = "Open Port Found"
                 end
             else
-                finding_txt.text = "Description:\n
-                #{description}\n\n
-                
-                Synopsis:\n
-                #{synopsis}\n\n
-                
-                Plugin Ouput:\n
-                #{plugin_output if plugin_ouput}"
+                desc = "Description:
+#{description if description}
+"
+                syn = "Synopsis:
+#{synopsis if synopsis}
+"
+                plugout = "Plugin Ouput:
+#{plugin_output if plugin_ouput}"
+                finding_txt.text = "#{desc if description}#{syn if synopsis}#{plugout if plugin_ouput}"
             end
             
             refs = finding.add_element("references")
@@ -378,8 +382,8 @@ def parse_ivil(content)
         end
     }
     REXML::Document.parse_stream(content, parser)
-    out = ""
-    ivil.write(out, 2)
+    out = String.new
+    pretty.write(ivil, out)
     return out
     
 end
