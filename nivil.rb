@@ -47,6 +47,9 @@ optparse = OptionParser.new do |opts|
     opts.on('-g', '--get-report RPTID', 'Download Report in Nessus V2 format.') do |rpt|
         options[:rptid] = rpt
     end
+    opts.on('-o', '--out FILE', 'Optional filename to output to.') do |out|
+        options[:out] = out
+    end
     case ARGV.length
     when 0
       puts opts
@@ -159,8 +162,14 @@ def get_report(options)
     stuff = @n.connect(uri, post_data)
     
     if options[:rptid]
-        File.open("#{options[:rptid]}.nessus", 'w') {|f| f.write(stuff) }
-        exit
+        if options[:out]
+            File.open("#{options[:out]}.nessus", 'w') {|f| f.write(stuff) }
+            exit
+        else
+            File.open("#{options[:rptid]}.nessus", 'w') {|f| f.write(stuff) }
+            exit
+        end
+        
     else
         puts("Error: No Report Specified")
     end
