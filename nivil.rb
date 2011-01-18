@@ -50,6 +50,9 @@ optparse = OptionParser.new do |opts|
     opts.on('-o', '--out FILE', 'Optional filename to output to.') do |out|
         options[:out] = out
     end
+    opts.on('-c', '--check', 'Checks the status of a report supplied with -g') do
+        options[:check] = true
+    end
     case ARGV.length
     when 0
       puts opts
@@ -156,6 +159,25 @@ def show_reports(options)
 end
 
 def get_report(options)
+    status = nil
+    uri = "scan/list"
+    post_data = { "token" => @token }
+    stuff = @n.connect(uri, post_data)
+    docxml = REXML::Document.new(stuff)
+    docxml.elements.each('/reply/contents/scans/scanList/scan') {|scan|
+        
+        if scan.elements['uuid'].text == options[:rptid]
+            @status = scan.elements['status'].text
+            @now = scan.elements['completion_current'].text
+            @total = scan.elements['completion_total'].text   
+        end
+    }
+    
+    if @status == "running"
+        #puts("Scan it not completed, cannot download")
+        puts("#{@status}|#{@now}|#{@total}")
+        exit
+    end
     stuff = nil
     uri = "file/report/download"
     post_data = { "token" => @token, "report" => options[:rptid]  }
@@ -175,23 +197,7 @@ def get_report(options)
     end
 end
 
-def rpt_status(options)
-    # Return report status
-    uri = "scan/list"
-    post_data = { "token" => @token }
-    stuff = @n.connect(uri, post_data)
-    docxml = REXML::Document.new(stuff)
-    docxml.elements.each('/reply/contents/scans/scanList/scan') {|scan|
-        
-        if scan.elements['uuid'].text == options[:rptid]
-            if scan.elements['status'].text == "running"
-                now = scan.elements['completion_current'].text
-                total = scan.elements['completion_total'].text
-                puts("#{scan.elements['status'].text}|#{now}|#{total}")
-            end
-        end
-    }
-end
+
 @n = NessusConnection.new(options[:username], options[:passwd], options[:server])
 
 if options[:showpol]
